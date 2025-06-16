@@ -57,8 +57,18 @@ const Chat: React.FC = () => {
 
   const joinRoom = () => {    
     if (room) {
-      socketRef.current?.emit('join_room', room);
+      socketRef.current?.emit('join_room', room, user.name);
       setShowChat(true);
+
+      setMessageList(prev => [
+      ...prev,
+      {
+        room,
+        author: user.name,
+        message: `You joined the chat`,
+        time: new Date().toLocaleTimeString(),
+      }
+    ]); 
     }
   };
 
