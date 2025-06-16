@@ -10,6 +10,7 @@ interface ChatMessage {
   author: string;
   message: string;
   time: string;
+  type?: 'user' | 'system'; // Add this line if not present
 }
 
 const Chat: React.FC = () => {
@@ -19,6 +20,7 @@ const Chat: React.FC = () => {
   const [currentMessage, setCurrentMessage] = useState('');
   const [messageList, setMessageList] = useState<ChatMessage[]>([]);
   const [showChat, setShowChat] = useState(false);
+  const [typingUser, setTypingUser] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
@@ -33,8 +35,16 @@ const Chat: React.FC = () => {
     });
 
     socketRef.current.on('receive_message', (data: ChatMessage) => {
-      console.log('Mensaje recibido:', data);
       setMessageList(prev => [...prev, data]);
+    });
+
+    // Listen for typing event
+    socketRef.current.on('user_typing', (data: { author: string }) => {
+        console.debug(`${data.author} is typing...`);
+        if (data.author !== user.name) {
+            setTypingUser(data.author);
+            setTimeout(() => setTypingUser(null), 2500);
+        }
     });
 
     socketRef.current.on('status', (data) => {
@@ -67,6 +77,7 @@ const Chat: React.FC = () => {
         author: user.name,
         message: `You joined the chat`,
         time: new Date().toLocaleTimeString(),
+        type: 'system', // Indicate that this message is from the system
       }
     ]); 
     }
@@ -79,11 +90,18 @@ const Chat: React.FC = () => {
         author: user.name,
         message: currentMessage,
         time: new Date().toLocaleTimeString(),
+        type: 'user', // Indicate that this message is from the user
       };
 
       await socketRef.current?.emit('send_message', messageData);
       setMessageList(prev => [...prev, messageData]);
       setCurrentMessage('');
+    }
+  };
+
+  const handleTyping = () => {
+    if (socketRef.current) {
+      socketRef.current.emit('typing', room, user.name );
     }
   };
 
@@ -107,7 +125,7 @@ const Chat: React.FC = () => {
             {messageList.map((msg, index) => (
               <div
                 key={index}
-                className={`message ${msg.author === user.name ? 'own' : 'other'}`}
+                className={`message ${msg.type === 'system' ? 'system-message' : msg.author === user.name ? 'own' : 'other'}`}
               >
                 <div className="bubble">
                   <p>{msg.message}</p>
@@ -118,6 +136,11 @@ const Chat: React.FC = () => {
                 </div>
               </div>
             ))}
+            {typingUser && (
+              <div style={{ color: '#888', fontStyle: 'italic', marginBottom: 4 }}>
+                {typingUser} is typing...
+              </div>
+            )}
           </div>
           <div className="chat-footer">
             <input
@@ -125,7 +148,11 @@ const Chat: React.FC = () => {
               placeholder="Mensaje..."
               value={currentMessage}
               onChange={(e) => setCurrentMessage(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') sendMessage();
+                handleTyping(); // Emit typing event on any key press
+              }}
+              onInput={handleTyping} // Also emit on input for better UX
             />
             <button onClick={sendMessage}>Enviar</button>
           </div>
